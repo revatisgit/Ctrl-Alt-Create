@@ -1,0 +1,169 @@
+---
+title: "BADM590_FinalProject"
+author: "Revati Shinde and other particpants of the group project"
+date: "11/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First we must load the required libraries
+
+```{r}
+library(tidyverse)
+library(rtweet)
+library(igraph)
+library(psych)
+```
+
+Now we can load our data sets.
+
+```{r}
+#load tesla stock data
+df_stock <- read_csv('TSLA (1).csv')
+head(df_stock)
+```
+
+```{r}
+#load elon's tweets
+df_tweets <- read_csv('elonmusk.csv')
+head(df_tweets)
+```
+
+```{r}
+#load tesla sentiment data
+df_sentiment <- read_csv('one-year-of-tsla-on-reddit-comments.csv')
+head(df_sentiment)
+```
+
+Now that the data has all successfully loaded we may pre-process the data before beginning analysis. First we aggregate daily sentiment from df_sentiment.
+
+```{r}
+#aggregate daily sentiment for df_sentiment
+agg_tbl <- df_sentiment %>% group_by(day) %>%
+  summarise(mean_sentiment = mean(sentiment, na.rm = TRUE))
+agg_tbl <- as.data.frame(agg_tbl)
+agg_tbl
+```
+
+Next we join the aggregated sentiment (agg_tbl) with df_stock to have an associated sentiment with each day's stock price.
+
+```{r}
+#combine mean_sentiment and df_stock
+df_combined <- merge(df_stock, agg_tbl, by.x = 'day', by.y = 'day')
+df_combined
+```
+
+Now we can pursue our first question: Does post sentiment have a statistically significant correlation with Tesla's stock price? We'll begin with a correlation plot to get an idea if there are any highly correlated variables.
+
+```{r}
+df_test <- subset(df_combined, select = -c(day, Date))
+corPlot(df_test)
+```
+
+We can see that the correlation between mean_sentiment and the stock prices tend to be low so this clues us in that there may not be a statistically significant relationship, however we'll still need to run a regression to make sure. We can also note that interestingly, there is a slight correlation between mean_sentiment and Volume, so we may want to explore this variable as well.
+
+```{r}
+#correlation between Close and mean_sentiment
+cor(df_combined$Close, df_combined$mean_sentiment)
+```
+
+A simple correlation test says no, but we'll perform a linear regression with Close as the outcome and mean_sentiment as the predictor to check for significance as well. 
+
+```{r}
+#regression with outcome 'Close' and predictor 'mean_sentiment'
+lm1 <- lm(Close ~ mean_sentiment, data = df_combined)
+summary(lm1)
+```
+
+Next, we'll examine the relationship between mean_sentiment and Volume since our plot indicated that these variables may have a significant relationship. First, the exact correlation.
+
+```{r}
+cor(df_combined$Volume, df_combined$mean_sentiment)
+```
+
+So, interestingly there is a negative correlation, meaning that when users have a higher opinion of TSLA they are less likely to trade the stock. Let's check if the relationship is significant with another simple linear regression.
+
+```{r}
+lm2 <- lm(Volume ~ mean_sentiment, data = df_combined)
+summary(lm2)
+```
+
+
+As we can see, not only is there no correlation between user sentiment and Tesla stock price, but the p-value of mean_sentiment is over 0.5, therefore any relationship between the variables would be insignificant regardless. We can then say that our first hypothesis is disproved, and user sentiment has no statistically significant correlation with Tesla stock price. However, our analysis of Volume shows otherwise given that the p-value in lm2 is less than 0.05. Therefore, even though user sentiment has no relationship with TSLA price, it indeed has a statistically significant impact on trading volume. Now we can move on to testing out second question: Do statements made by Elon Musk correlate with a change to Tesla stock price? We'll also include Volume in this analysis since it was identified as a potentially useful variable in our previous analysis. We'll begin by identifying Elon's most liked tweet between the years 2021-2022.
+
+```{r}
+#sort df_tweets by Number of Likes
+newdata <- df_tweets[order(df_tweets$likes, decreasing = TRUE), ]
+
+#check the date for most liked tweet
+head(newdata)
+```
+
+We can see that Elon's most liked tweet is on April 28th of 2022, which is associated with day 297 in our df_combined data frame. Therefore, we'll analyze the mean closing price (Close) and trading volume (Volume) for the 3 days before and after day 297 using a T-test to see if the tweet had a significant impact on TSLA price.
+
+```{r}
+#create dataset for three days before
+df_before <- df_combined %>% filter(day < 297)
+df_before <- df_before %>% filter(day > 291)
+head(df_before)
+```
+
+```{r}
+#create dataset for three days after
+df_after <- df_combined %>% filter(day > 297)
+df_after <- df_after %>% filter(day < 303)
+head(df_after)
+```
+
+Now that we have three days of data before and after April 28th (day 297), we can conduct the two sample T-test to see if there is a statistically significant difference in mean Close and Volume.
+
+```{r}
+#t-test
+x <- df_before$Close
+y <- df_after$Close
+t.test(x, y, alternative = 'two.sided', var.equal = FALSE)
+```
+
+```{r}
+#t-test
+x <- df_before$Volume
+y <- df_after$Volume
+t.test(x, y, alternative = 'two.sided', var.equal = FALSE)
+```
+
+We can see that the p-values are 0.61 and 0.49 respectively (greater than 0.05), therefore there is not a statistically significant difference in stock price or trading volume before and after Elon tweeted his most liked tweet. But, perhaps most likes is not a good metric to determine which tweet may have the most impact on swaying users' behavior in the market. Therefore, we also want to analyze the difference in stock price before and after a specific tweet. For instance, on September 22nd, 2021 (day 79), Elon tweeted that Tesla is rolling out a test for a Tesla insurance policy in Texas based on analytics of the drivers' behavior to calculate rates. This signifies both a new major analytics initiative for Tesla, and the business entering into a new market, insurance. Therefore, we would expect that this news would have an impact on traders' perception of TSLA future performance.
+
+```{r}
+#create dataset for three days before
+df_before2 <- df_combined %>% filter(day < 79)
+df_before2 <- df_before2 %>% filter(day > 73)
+head(df_before2)
+```
+
+```{r}
+#create dataset for three days after
+df_after2 <- df_combined %>% filter(day > 79)
+df_after2 <- df_after2 %>% filter(day < 85)
+head(df_after2)
+```
+
+Now that we have three days of data before and after September 22nd (day 79), we can conduct the two sample T-test to see if there is a statistically significant difference in mean Close and Volume.
+
+```{r}
+#t-test
+x2 <- df_before2$Close
+y2 <- df_after2$Close
+t.test(x2, y2, alternative = 'two.sided', var.equal = FALSE)
+```
+
+```{r}
+#t-test
+x2 <- df_before2$Volume
+y2 <- df_after2$Volume
+t.test(x2, y2, alternative = 'two.sided', var.equal = FALSE)
+```
+
+We can see that the p-values are 0.10 and 0.68 respectively (greater than 0.05), therefore there is not a statistically significant difference in stock price or trading volume before and after Elon tweeted about the new analytics initiative and business venture. Therefore, both our initial hypotheses can be disproved through the analysis we've conducted. Despite the intuition led by the stereotype that Elon's online behavior and user perception of him has a significant impact on TSLA's performance, we can see that this is not the case. Elon's online behavior and user sentiment of Tesla has no statistically significant impact on TSLA's performance, with the only significant impact being found on trading volume rather than stock price.
